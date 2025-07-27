@@ -1,0 +1,273 @@
+Deploy Kubernetes Cluster
+
+	Kmaster1: Control-plane
+	Kworker1: worker node1
+        Kworker2: worker node2
+
+
+
+We need to deploy containerd in all the nodes
+We need to install kubeadm kubelet in all the nodes 
+We need to install kubectl in master node
+
+
+
+First, 
+  >> Deploy Master Node 
+
+   1. Install containerd
+   2. Install kubeadm,kubelet and kubectl 
+   3. Initialise K8s cluster
+   4. Deploy network-plugins like calico 
+   5. Verify Status 
+   6. Add Workernodes 
+
+
+##Install containerd in kmaster1 node
+
+
+#apt install apt-transport-https ca-certificates curl software-properties-common -y
+#curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+#echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+#apt update -y
+#apt install containerd.io -y
+#containerd -v
+
+
+
+Add Below Entry to /etc/hosts file < Change the ip address as per your nodes >
+
+vim /etc/hosts
+   192.168.122.201	kmaster1
+   192.168.122.211	kworker1
+   192.168.122.212	kworker2
+
+#####################################
+
+
+#Add Repository for kubernetes 
+
+
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+apt update -y
+
+apt install kubeadm kubelet kubectl -y
+
+kubeadm version
+
+kubelet --version
+
+kubectl version
+
+
+
+#Enable the overlay and br_netfilter module permanently 
+
+vim /etc/modules-load.d/k8s.conf
+    overlay
+    br_netfilte
+
+
+#save and exit 
+
+modprobe overlay
+modprobe br_netfilter
+
+
+lsmod | grep over
+lsmod | grep br_netfilter
+
+
+#Enable IP forwarding 
+
+vim /etc/sysctl.d/10-k8s.conf
+    net.bridge.bridge-nf-call-ip6tables = 1
+    net.bridge.bridge-nf-call-iptables = 1
+    net.ipv4.ip_forward = 1
+
+
+sysctl --system
+####
+
+
+## ADD cgroupfs as cgroup-driver to kubelet 
+
+vim /etc/default/kubelet
+    KUBELET_EXTRA_ARGS="--cgroup-driver=cgroupfs"
+
+systemctl daemon-reload
+
+systemctl restart kubelet.service
+
+rm -rf /etc/containerd/config.toml
+
+systemctl restart containerd.service
+
+
+#####
+
+
+#initializing the Cluster with pod network ( 10.244.0.0/16)
+
+kubeadm init --pod-network-cidr=10.244.0.0/16
+
+
+
+## Add KUBECONFIG for kubectl comman line tool
+
+
+vi .bashrc 
+
+export KUBECONFIG=/etc/kubernetes/admin.conf
+
+source .bashrc
+
+#kubectl get nodes
+
+#kubectl get pods -A
+
+[kubectl tab completion will not work - Add entry "source <(kubectl completion bash)" in .bashrc file
+and install bash-completion.
+
+
+#apt-get install bash-completion -y
+
+
+#vi .bashrc
+
+#Add the below line at the bottom of file
+
+source <(kubectl completion bash)
+
+#source .bashrc
+
+
+
+
+
+#Install Network Plugins ( calico )
+
+mkdir calico
+
+cd calico/
+
+wget  https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/tigera-operator.yaml
+
+kubectl create -f tigera-operator.yaml
+
+wget https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/custom-resources.yaml
+
+vi custom-resources.yaml 
+
+  ipPools:
+    - name: default-ipv4-ippool
+      blockSize: 26
+      cidr: 10.244.0.0/16 ###change pod network CIDR to kubeadm init --pod-network-cidr=10.244.0.0/16
+      encapsulation: VXLANCrossSubnet
+      natOutgoing: Enabled
+      nodeSelector: all()
+
+kubectl create -f custom-resources.yaml
+
+
+#kubectl get nodes 
+
+#kubectl get pods -A
+
+
+
+
+			###DEPLOY Worker Node##
+
+
+Deploy Master Node(kworker1): 
+
+
+1. Install cotnainerd in worker node
+
+
+##Install containerd in kmaster1 node
+
+
+#apt install apt-transport-https ca-certificates curl software-properties-common -y
+#curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+#echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+#apt update -y
+#apt install containerd.io -y
+#containerd -v
+
+
+
+
+
+
+vim /etc/hosts
+
+   192.168.122.201	kmaster1
+   192.168.122.211	kworker1
+   192.168.122.212	kworker2
+
+#####################################
+
+#curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+#echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+#apt update -y
+
+#apt install kubeadm kubelet -y
+
+#kubeadm version
+
+kubelet --version
+
+kubectl version
+
+swapoff -a
+
+
+
+#vi /etc/modules-load.d/k8s.conf
+overlay
+br_netfilte
+###
+modprobe overlay
+modprobe br_netfilter
+
+
+lsmod | grep over
+lsmod | grep br_netfilter
+
+#vi /etc/sysctl.d/10-k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+
+
+sysctl --system
+####
+
+
+vim /etc/default/kubelet
+    KUBELET_EXTRA_ARGS="--cgroup-driver=cgroupfs"
+
+systemctl daemon-reload
+
+systemctl restart kubelet.service
+
+rm -rf /etc/containerd/config.toml
+
+systemctl restart containerd.service
+
+###
+
+Now, Join kworker1 nodes to kubernetes cluster by entering the command getting from master node ( after finishing the kubeadm init)
+
+we can use ## kubectl token create --print-join-command  << in Master node to create another token >> 
+
+
+#kubeadm join 192.168.122.201:6443 --token gs8vyr.1qstrerbnax32p7j --discovery-token-ca-cert-hash sha256:29a90cd5bc4b53c012501b3adb485b9d870ad6e80304d759b2e8a49e41d6fc3d 
+

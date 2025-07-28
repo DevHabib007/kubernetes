@@ -1,0 +1,14 @@
+set auto indent on ubuntu 22.04
+
+root@kmaster:~#vim .vimrc
+syntax on
+set cursorline
+set cursorcolumn
+set autoindent
+set paste
+set tabstop=2
+set shiftwidth=2
+set expandtab
+set filetype=yaml
+set filetype=yml
+:x
